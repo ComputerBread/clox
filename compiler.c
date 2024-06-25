@@ -135,6 +135,16 @@ static void expression() {
     // now wot?
 }
 
+/**
+* We assume the initial '(' has already been consumed.
+* We recursively call back into expression() to compile the expression between
+* the parentheses, then parse the closing ')' at the end.
+*/
+static void grouping() {
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+}
+
 
 
 
