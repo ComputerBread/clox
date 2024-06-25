@@ -10,7 +10,7 @@ typedef double Value;
 // ----------------------------------------------------------------
 // we can store code in chunks, but what about data?
 // to compile statements containing literals, we need some sort of instruction
-// to "produce a consant" and store those literals values.
+// to "produce a constant" and store those literals values.
 // We will do like the JVM and use a constant pool.
 // A constant pool is an array of values.
 // it will contain all(?) the literals/constants in our program

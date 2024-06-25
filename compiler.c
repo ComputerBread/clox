@@ -85,20 +85,60 @@ static void emitBytes(uint8_t b1, uint8_t b2) {
     emitByte(b2);
 }
 
-// ----------------------------------------------------------------------------
-
-
 static void emitReturn() {
     emitByte(OP_RETURN);
+}
+
+/**
+ * To insert an entry in the constant table
+ */
+static uint8_t makeConstant(Value value) {
+    int constant = addConstant(currentChunk(), value);
+    if (constant > UINT8_MAX) {
+        // this limit is pretty low
+        // to increase it, we could add another instruction like OP_CONSTANT_16
+        // that stores the index as a 2-byte operand
+        error("Too many constants in one chunk.");
+        return 0;
+    }
+    return (uint8_t)constant;
+}
+
+/**
+ * First we add the value to the constant table (using makeConstant).
+ * Then we emit an OP_CONSTANT instructiopn that pushes it onto the stack at
+ * runtime.
+ */
+static void emitConstant(Value value) {
+    emitBytes(OP_CONSTANT, makeConstant(value));
 }
 
 static void endCompiler() {
     emitReturn();
 }
 
+// ----------------------------------------------------------------------------
+// between parsing <- (this) -> emitting bytes
+
+
+/**
+ * We assume the token for the nb literal has already been consumed & is stored
+ * in parser.previous. We take that lexeme and use strtod to convert it to a
+ * double value. Then we generate the code to load that value.
+ */
+static void number() {
+    double value = strtod(parser.previous.start, NULL);
+    emitConstant(value);
+}
+
+static void expression() {
+    // now wot?
+}
 
 
 
+
+// ----------------------------------------------------------------------------
 bool compile(const char* source, Chunk* chunk) {
     initScanner(source);
 
