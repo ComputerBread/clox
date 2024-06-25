@@ -11,6 +11,13 @@
 typedef enum
 {
     OP_CONSTANT, // loads a constant for use
+    // binary operator
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_MULTIPLY,
+    OP_DIVIDE,
+    // unary operator
+    OP_NEGATE,
     OP_RETURN,
 } OpCode;
 
