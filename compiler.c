@@ -15,6 +15,20 @@ typedef struct {
     bool panicMode; // are we in panic mode?
 } Parser;
 
+typedef enum {
+    PREC_NONE,        // lowest precedence
+    PREC_ASSIGNMENT,  // =
+    PREC_OR,          // or
+    PREC_AND,         // and
+    PREC_EQUALITY,    // == !=
+    PREC_COMPARISON,  // < > <= >=
+    PREC_TERM,        // + -
+    PREC_FACTOR,      // * /
+    PREC_UNARY,       // ! -
+    PREC_CALL,        // . ()
+    PREC_PRIMARY      // highest precedence
+} Precedence;
+
 Parser parser;
 
 static void errorAt(Token* token, const char* message) {
@@ -120,6 +134,17 @@ static void endCompiler() {
 // ----------------------------------------------------------------------------
 // between parsing <- (this) -> emitting bytes
 
+/**
+ * Starts at the current token & parses any expression at the given precedence
+ * level or higher.
+ */
+static void parsePrecedence(Precedence precedence) {
+    // what goes here?
+}
+
+static void expression() {
+    parsePrecedence(PREC_ASSIGNMENT);
+}
 
 /**
  * We assume the token for the nb literal has already been consumed & is stored
@@ -131,9 +156,20 @@ static void number() {
     emitConstant(value);
 }
 
-static void expression() {
-    // now wot?
+static void unary() {
+    TokenType operatorType = parser.previous.type;
+
+    // compile the operand
+    parsePrecedence(PREC_UNARY);
+
+    // emit the operator instruction.
+    switch (operatorType) {
+        case TOKEN_MINUS: emitByte(OP_NEGATE); break;
+        default:
+            return;
+    }
 }
+
 
 /**
 * We assume the initial '(' has already been consumed.
