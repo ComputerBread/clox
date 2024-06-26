@@ -6,6 +6,8 @@
 #include "compiler.h"
 #include "scanner.h"
 
+
+
 // ----------------------------------------------------------------------------
 // parsing tokens
 typedef struct {
@@ -28,6 +30,17 @@ typedef enum {
     PREC_CALL,        // . ()
     PREC_PRIMARY      // highest precedence
 } Precedence;
+
+
+// (just a typedef, to use function pointer more easily.)
+typedef void (*ParseFn)();
+
+// one row of the parser table. (rules[])
+typedef struct {
+    ParseFn prefix; // to parse prefix expression
+    ParseFn infix;  // to parse infix expression
+    Precedence precedence;
+} ParseRule;
 
 Parser parser;
 
@@ -133,6 +146,63 @@ static void endCompiler() {
 
 // ----------------------------------------------------------------------------
 // between parsing <- (this) -> emitting bytes
+
+static void binary();
+static void grouping();
+static void parsePrecedence(Precedence precedence);
+static ParseRule* getRule(TokenType type);
+static void number();
+static void unary();
+static void expression();
+
+// This syntax is called "designated initializers".
+// Each TOKEN_... will be replaced by its numeric value and represents an index
+// in the array.
+// And {...} is just a struct init.
+// This is used to parse 
+ParseRule rules[] = {
+    [TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+    [TOKEN_RIGHT_PAREN]   = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_LEFT_BRACE]    = {NULL,     NULL,   PREC_NONE}, 
+    [TOKEN_RIGHT_BRACE]   = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_COMMA]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_DOT]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_MINUS]         = {unary,    binary, PREC_TERM},
+    [TOKEN_PLUS]          = {NULL,     binary, PREC_TERM},
+    [TOKEN_SEMICOLON]     = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_SLASH]         = {NULL,     binary, PREC_FACTOR},
+    [TOKEN_STAR]          = {NULL,     binary, PREC_FACTOR},
+    [TOKEN_BANG]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_BANG_EQUAL]    = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_EQUAL]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_EQUAL_EQUAL]   = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_GREATER]       = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_GREATER_EQUAL] = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_LESS]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_LESS_EQUAL]    = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_STRING]        = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
+    [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_FALSE]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_FOR]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_NIL]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_TRUE]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_ERROR]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_EOF]           = {NULL,     NULL,   PREC_NONE},
+};
+
 /**
  * this is going to be called after the left part of the expression & the binary
  * operator have already been consumed.
@@ -165,9 +235,36 @@ static void binary() {
 /**
  * Starts at the current token & parses any expression at the given precedence
  * level or higher.
+ *
+ * The first token is always going to belong to some kind of prefix expression.
+ * It can be followed by an infix expression.
  */
 static void parsePrecedence(Precedence precedence) {
-    // what goes here?
+
+    // prefix expression
+    advance();
+    ParseFn prefixRule = getRule(parser.previous.type)->prefix;
+    if (prefixRule == NULL) {
+        error("Expect expression.");
+        return;
+    }
+    prefixRule();
+
+    // infix expression
+    while (precedence <= getRule(parser.current.type)->precedence) {
+        advance();
+        ParseFn infixRule = getRule(parser.previous.type)->infix;
+        infixRule();
+    }
+}
+
+/**
+ * this function exists solely to handle a declaration cycle in the C code.
+ * yeah, well I didn't follow the boook properly and just put some prototypes
+ * above!
+ */
+static ParseRule* getRule(TokenType type) {
+    return &rules[type];
 }
 
 static void expression() {
@@ -208,7 +305,6 @@ static void grouping() {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
-
 
 
 
