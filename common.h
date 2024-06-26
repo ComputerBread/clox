@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define DEBUG_PRINT_CODE
 // when this  flag is defined, the VM disassembles and prints each instruction
 // right before executing
 #define DEBUG_TRACE_EXECUTION

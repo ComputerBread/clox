@@ -2,7 +2,8 @@
 CC = gcc
 
 # Define compiler flags
-CFLAGS = -Wall -Wextra -std=c99 #-Werror 
+CFLAGS = -Wall -Wextra -std=c99 -g
+#-Werror 
 
 # Define the build directory
 BUILD_DIR = build
