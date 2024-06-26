@@ -133,6 +133,34 @@ static void endCompiler() {
 
 // ----------------------------------------------------------------------------
 // between parsing <- (this) -> emitting bytes
+/**
+ * this is going to be called after the left part of the expression & the binary
+ * operator have already been consumed.
+ * This will function compiles the right operand.
+ */
+static void binary() {
+    TokenType operatorType = parser.previous.type;
+
+    // compile the right operand
+    // Need to worry about precedence (so 2*3+4 only capture the "3", and not "3+4").
+    // Binary operators are left-associative, so we will use ONE HIGHER LEVEL of
+    // precedence. (we capture in the right operands any expression with higher
+    // precedence than the one of the current operator).
+    // Ex ( 1 + 2*3 + 4 => ((1+(2*3))+4) )
+    // If we used the same level of precedence, we would get right-associativity
+    // Ex: a = b = c => (a = (b = c))
+    ParseRule* rule = getRule(operatorType);
+    parsePrecedence((Precedence)(rule->precedence + 1));
+
+    // Emit the operator instruction.
+    switch (operatorType) {
+        case TOKEN_PLUS:          emitByte(OP_ADD); break;
+        case TOKEN_MINUS:         emitByte(OP_SUBTRACT); break;
+        case TOKEN_STAR:          emitByte(OP_MULTIPLY); break;
+        case TOKEN_SLASH:         emitByte(OP_DIVIDE); break;
+        default: return; // Unreachable.
+    }
+}
 
 /**
  * Starts at the current token & parses any expression at the given precedence
