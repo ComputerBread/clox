@@ -15,6 +15,11 @@ typedef enum
     OP_TRUE,
     OP_FALSE,
     // binary operator
+    OP_EQUAL,
+    OP_GREATER,
+    OP_LESS,
+        // not defining OpCode for !=, <=, >= for education purpose
+        // but we should do it for better perf!
     OP_ADD,
     OP_SUBTRACT,
     OP_MULTIPLY,
