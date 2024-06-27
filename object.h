@@ -17,6 +17,11 @@ typedef enum {
 
 struct Obj {
   ObjType type;
+
+  // pointer to next Obj in the chain
+  // used to keep track of all object allocated on the head
+  // useful for garbage collector!
+  struct Obj* next;
 };
 
 // Given an ObjString* you can safely cast if to Obj* (because Obj is the first
