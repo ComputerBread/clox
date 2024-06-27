@@ -167,6 +167,7 @@ static void number();
 static void unary();
 static void expression();
 static void literal();
+static void string();
 
 // This syntax is called "designated initializers".
 // Each TOKEN_... will be replaced by its numeric value and represents an index
@@ -194,7 +195,7 @@ ParseRule rules[] = {
     [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_STRING]        = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
     [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
     [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
@@ -308,6 +309,12 @@ static void expression() {
 static void number() {
     double value = strtod(parser.previous.start, NULL);
     emitConstant(NUMBER_VAL(value));
+}
+
+static void string() {
+    emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length-2)));
+    // the +1 & -2 parts trim the leading & trailing quotation marks
+    // (if Lox supported string escape sequences like `\n`, we'd translate those here)
 }
 
 static void unary() {
