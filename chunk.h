@@ -11,6 +11,9 @@
 typedef enum
 {
     OP_CONSTANT, // loads a constant for use
+    OP_NIL,
+    OP_TRUE,
+    OP_FALSE,
     // binary operator
     OP_ADD,
     OP_SUBTRACT,
