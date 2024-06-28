@@ -313,6 +313,18 @@ static void expression() {
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
+/**
+ * An expression statement evaluates the expression and discards the result.
+ * Usually, it's so that you can call a function or evaluate an assignment for
+ * its side effect.
+ * ex1 : brunch = "cookie";
+ * ex2 : print(variable);
+ */
+static void expressionStatement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emitByte(OP_POP);
+}
 
 static void printStatement() {
     expression();
@@ -323,6 +335,8 @@ static void printStatement() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else {
+        expressionStatement();
     }
 }
 

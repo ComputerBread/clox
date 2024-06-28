@@ -14,6 +14,8 @@ typedef enum
     OP_NIL,
     OP_TRUE,
     OP_FALSE,
+
+    OP_POP, // to pop the stack, used by expressionStatement
     // binary operator
     OP_EQUAL,
     OP_GREATER,
