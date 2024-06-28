@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "chunk.h"
@@ -47,7 +48,25 @@ typedef struct {
     Precedence precedence;
 } ParseRule;
 
+
+typedef struct {
+    Token name;
+    int depth;
+} Local;
+
+typedef struct {
+    // simple flat array of all locals that are in scope during compilation
+    // they are ordered in the order that their declarations appear in the code.
+    // Since our bytecode operand is a single byte, we can only store UINT8_MAX+1
+    // variables.
+    Local locals[UINT8_COUNT];
+    int localCount;
+    int scopeDepth; // 0 = global scope
+} Compiler;
+
 Parser parser;
+
+Compiler* current = NULL;
 
 static void errorAt(Token* token, const char* message) {
 
@@ -153,6 +172,12 @@ static uint8_t makeConstant(Value value) {
  */
 static void emitConstant(Value value) {
     emitBytes(OP_CONSTANT, makeConstant(value));
+}
+
+static void initCompiler(Compiler* compiler) {
+    compiler->localCount = 0;
+    compiler->scopeDepth = 0;
+    current = compiler;
 }
 
 static void endCompiler() {
@@ -329,8 +354,53 @@ static uint8_t identifierConstant(Token* name) {
     return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
+static void addLocal(Token name) {
+
+    if (current->localCount == UINT8_COUNT) {
+        error("Too many local variables in scope.");
+        return;
+    }
+
+    Local* local = &current->locals[current->localCount++];
+    local->name = name;
+    local->depth = current->scopeDepth;
+}
+
+static bool identifiersEqual(Token* a, Token* b) {
+    if (a->length != b->length) return false;
+    return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static void declareVariable() {
+    // global var are implicitly declared
+    if (current->scopeDepth == 0) return;
+
+    Token* name = &parser.previous;
+
+    // it's an error to have 2 variables with the same name in the same local scope
+    for (int i = current->localCount - 1; i >= 0; i--) {
+        Local* local = &current->locals[i];
+        if (local->depth != -1 && local->depth < current->scopeDepth) {
+            break;
+        }
+
+        if (identifiersEqual(name, &local->name)) {
+            error("Already variable with this name in this scope.");
+        }
+    }
+
+    addLocal(*name);
+}
+
 static uint8_t parseVariable(const char* errorMessage) {
     consume(TOKEN_IDENTIFIER, errorMessage);
+
+    declareVariable();
+    // if local variable, we exit
+    // because they are not looked up by name
+    if (current->scopeDepth > 0) return 0;
+
+    // globals are looked up by name
     return identifierConstant(&parser.previous);
 }
 
@@ -339,6 +409,10 @@ static void expression() {
 }
 
 static void defineVariable(uint8_t global) {
+    // for local variable we have nothing to do, the value is already on the
+    // stack
+    if (current->scopeDepth > 0) return;
+
     emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
@@ -408,9 +482,35 @@ static void synchronize() {
 
 }
 
+static void beginScope() {
+    current->scopeDepth++;
+}
+
+static void endScope() {
+    current->scopeDepth--;
+
+    while (current->localCount > 0
+        && current->locals[current->localCount-1].depth > current->scopeDepth) {
+        emitByte(OP_POP);
+        current->localCount--;
+    }
+}
+
+static void block() {
+    while(!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        declaration();
+    }
+
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_LEFT_BRACE)){
+        beginScope();
+        block();
+        endScope();
     } else {
         expressionStatement();
     }
@@ -491,6 +591,8 @@ static void grouping(bool canAssign) {
 // ----------------------------------------------------------------------------
 bool compile(const char* source, Chunk* chunk) {
     initScanner(source);
+    Compiler compiler;
+    initCompiler(&compiler);
 
     compilingChunk = chunk;
 
