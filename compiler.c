@@ -332,6 +332,38 @@ static void printStatement() {
     emitByte(OP_PRINT);
 }
 
+static void synchronize() {
+    parser.panicMode = false;
+
+    // we skip tokens until we reach something that looks like a statement
+    // boundary. (a semicolon, or the beginning of a statement)
+    while (parser.current.type != TOKEN_EOF) {
+
+        // end of statement
+        if (parser.previous.type == TOKEN_SEMICOLON) return;
+
+        switch (parser.current.type) {
+            // beginning of a statement
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+
+            // everything else is skipped
+            default:
+                ; // Do nothing.
+        }
+
+        advance();
+    }
+
+}
+
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
@@ -342,6 +374,9 @@ static void statement() {
 
 static void declaration() {
     statement();
+
+    // synchronize panic mode
+    if (parser.panicMode) synchronize();
 }
 
 /**
