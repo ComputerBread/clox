@@ -18,6 +18,7 @@ typedef enum
     OP_POP, // to pop the stack, used by expressionStatement
     OP_DEFINE_GLOBAL,
     OP_GET_GLOBAL,
+    OP_SET_GLOBAL,
 
     // binary operator
     OP_EQUAL,

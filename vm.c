@@ -153,6 +153,20 @@ static InterpretResult run() {
                 break;
             }
 
+            case OP_SET_GLOBAL: {
+                ObjString* name = READ_STRING();
+
+                // tableSet returns true if we insert a new key
+                // this is an assignment, not a declaration, so adding a new
+                // key should return an error:
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
+
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();

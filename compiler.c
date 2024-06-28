@@ -38,7 +38,7 @@ typedef enum {
 
 
 // (just a typedef, to use function pointer more easily.)
-typedef void (*ParseFn)();
+typedef void (*ParseFn)(bool canAssign);
 
 // one row of the parser table. (rules[])
 typedef struct {
@@ -169,18 +169,18 @@ static void endCompiler() {
 // ----------------------------------------------------------------------------
 // between parsing <- (this) -> emitting bytes
 
-static void binary();
-static void grouping();
+static void binary(bool canAssign);
+static void grouping(bool canAssign);
 static void parsePrecedence(Precedence precedence);
 static ParseRule* getRule(TokenType type);
-static void number();
-static void unary();
+static void number(bool canAssign);
+static void unary(bool canAssign);
 static void expression();
 static void statement();
 static void declaration();
-static void literal();
-static void string();
-static void variable();
+static void literal(bool canAssign);
+static void string(bool canAssign);
+static void variable(bool canAssign);
 
 // This syntax is called "designated initializers".
 // Each TOKEN_... will be replaced by its numeric value and represents an index
@@ -235,7 +235,7 @@ ParseRule rules[] = {
  * operator have already been consumed.
  * This will function compiles the right operand.
  */
-static void binary() {
+static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
 
     // compile the right operand
@@ -265,7 +265,7 @@ static void binary() {
     }
 }
 
-static void literal() {
+static void literal(bool canAssign) {
     switch (parser.previous.type) {
         case TOKEN_FALSE: emitByte(OP_FALSE); break;
         case TOKEN_NIL:   emitByte(OP_NIL);   break;
@@ -291,13 +291,28 @@ static void parsePrecedence(Precedence precedence) {
         error("Expect expression.");
         return;
     }
-    prefixRule();
+
+    // Assignment are a bit tricky:
+    // to prevent things like: a * b = c + d; (syntax error), we need to know
+    // if a variable happens to be the right-hand side of an infix operator
+    // or the operand of a unary operator, then that containing expression is
+    // too high precedence to permit the "="
+    // (a*b has higher precedence than "b=c+d")
+    bool canAssign = precedence <= PREC_ASSIGNMENT;
+    prefixRule(canAssign);
 
     // infix expression
     while (precedence <= getRule(parser.current.type)->precedence) {
         advance();
         ParseFn infixRule = getRule(parser.previous.type)->infix;
-        infixRule();
+        infixRule(canAssign);
+    }
+
+    // if we are in situation where user tries to make an illegal assignment
+    // nothing is going to consume the "=", so if that's the case, we make
+    // an error.
+    if (canAssign && match(TOKEN_EQUAL)) {
+        error("Invalid assignment target");
     }
 }
 
@@ -417,27 +432,35 @@ static void declaration() {
  * in parser.previous. We take that lexeme and use strtod to convert it to a
  * double value. Then we generate the code to load that value.
  */
-static void number() {
+static void number(bool canAssign) {
     double value = strtod(parser.previous.start, NULL);
     emitConstant(NUMBER_VAL(value));
 }
 
-static void string() {
+static void string(bool canAssign) {
     emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length-2)));
     // the +1 & -2 parts trim the leading & trailing quotation marks
     // (if Lox supported string escape sequences like `\n`, we'd translate those here)
 }
 
-static void namedVariable(Token name) {
+static void namedVariable(Token name, bool canAssign) {
     uint8_t arg = identifierConstant(&name);
-    emitBytes(OP_GET_GLOBAL, arg);
+
+    // we check if next token is "=", to know if this is an assignment or...
+    if (canAssign && match(TOKEN_EQUAL)) {
+        expression(); // parse the right side
+        emitBytes(OP_SET_GLOBAL, arg);
+    } else { // ...just reading/accessing the variable
+        emitBytes(OP_GET_GLOBAL, arg);
+    }
+
 }
 
-static void variable() {
-    namedVariable(parser.previous);
+static void variable(bool canAssign) {
+    namedVariable(parser.previous, canAssign);
 }
 
-static void unary() {
+static void unary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
 
     // compile the operand
@@ -458,7 +481,7 @@ static void unary() {
 * We recursively call back into expression() to compile the expression between
 * the parentheses, then parse the closing ')' at the end.
 */
-static void grouping() {
+static void grouping(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
