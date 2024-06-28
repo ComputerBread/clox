@@ -543,15 +543,36 @@ static void string(bool canAssign) {
     // (if Lox supported string escape sequences like `\n`, we'd translate those here)
 }
 
+static int resolveLocal(Compiler* compiler, Token* name) {
+    for (int i = compiler->localCount - 1; i >= 0; i--) {
+        Local* local = &compiler->locals[i];
+        if(identifiersEqual(name, &local->name)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 static void namedVariable(Token name, bool canAssign) {
-    uint8_t arg = identifierConstant(&name);
+
+    uint8_t getOp, setOp;
+    int arg = resolveLocal(current, &name);
+    if (arg != -1) {
+        getOp = OP_GET_LOCAL;
+        setOp = OP_SET_LOCAL;
+    } else {
+        arg = identifierConstant(&name);
+        getOp = OP_GET_GLOBAL;
+        setOp = OP_SET_GLOBAL;
+    }
 
     // we check if next token is "=", to know if this is an assignment or...
     if (canAssign && match(TOKEN_EQUAL)) {
         expression(); // parse the right side
-        emitBytes(OP_SET_GLOBAL, arg);
+        emitBytes(setOp, (uint8_t)arg);
     } else { // ...just reading/accessing the variable
-        emitBytes(OP_GET_GLOBAL, arg);
+        emitBytes(getOp, (uint8_t)arg);
     }
 
 }
