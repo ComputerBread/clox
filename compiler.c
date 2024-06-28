@@ -97,6 +97,16 @@ static void consume(TokenType type, const char* message) {
     errorAtCurrent(message);
 }
 
+static bool check(TokenType type) {
+    return parser.current.type == type;
+}
+
+static bool match(TokenType type) {
+    if (!check(type)) return false;
+    advance();
+    return true;
+}
+
 // ----------------------------------------------------------------------------
 // Emitting bytecode.
 // after we parse & understand a piece of the user's program, the next step is
@@ -166,6 +176,8 @@ static ParseRule* getRule(TokenType type);
 static void number();
 static void unary();
 static void expression();
+static void statement();
+static void declaration();
 static void literal();
 static void string();
 
@@ -301,6 +313,23 @@ static void expression() {
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
+
+static void printStatement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Expect ';' after value.");
+    emitByte(OP_PRINT);
+}
+
+static void statement() {
+    if (match(TOKEN_PRINT)) {
+        printStatement();
+    }
+}
+
+static void declaration() {
+    statement();
+}
+
 /**
  * We assume the token for the nb literal has already been consumed & is stored
  * in parser.previous. We take that lexeme and use strtod to convert it to a
@@ -356,8 +385,11 @@ bool compile(const char* source, Chunk* chunk) {
     parser.panicMode = false;
 
     advance();
-    expression();
-    consume(TOKEN_EOF, "Expect end of expression.");
+
+    while (!match(TOKEN_EOF)) {
+        declaration();
+    }
+
     endCompiler();
     return !parser.hadError;
 }
