@@ -36,10 +36,14 @@ static void runtimeError(const char* format, ...) {
 void initVM() {
     resetStack();
     vm.objects = NULL;
+
+    initTable(&vm.globals);
+    initTable(&vm.strings);
 }
 
 void freeVM() {
     freeTable(&vm.strings);
+    freeTable(&vm.globals);
     freeObjects();
 }
 
@@ -77,6 +81,7 @@ static void concatenate() {
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 
 #define BINARY_OP(valueType, op) \
     do { \
@@ -118,6 +123,24 @@ static InterpretResult run() {
             case OP_FALSE: push(BOOL_VAL(false)); break;
 
             case OP_POP: pop(); break;
+
+            case OP_DEFINE_GLOBAL: {
+                // Get the name from the constant table.
+                // Does it by: reading a one-byte operand from the bytecode
+                // chunk, it treats that as an index into the chunk's constant
+                // table and returns the string at that index.
+                ObjString* name = READ_STRING();
+                // store it in the globals hash table
+                // (peek(0) return the value from top of the stack)
+                tableSet(&vm.globals, name, peek(0));
+
+                // we don't check if it already exists, we can redefine global
+                // var, it's useful with REPL session.
+
+                // remove it from stack
+                pop();
+                break;
+            }
 
             case OP_EQUAL: {
                 Value b = pop();
@@ -171,6 +194,7 @@ static InterpretResult run() {
 
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }
 

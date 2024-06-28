@@ -22,6 +22,9 @@ typedef struct {
     // on the stack. So if stackTop points to stack[0], then stack is empty.
     Value* stackTop;
 
+    // global variables
+    Table globals;
+
     // Table (hashmap) of "interned strings", to avoid strings duplication,
     // and to make Tables work! (check string interning 20.5)
     // This allows to do == on strings! because same string address => same
