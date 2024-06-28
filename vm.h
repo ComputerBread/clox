@@ -3,6 +3,7 @@
 
 #include "chunk.h"
 #include "value.h"
+#include "table.h"
 #include <stdint.h>
 
 #define STACK_MAX 256
@@ -20,6 +21,12 @@ typedef struct {
     // pointer to the element just past the element containing the top value
     // on the stack. So if stackTop points to stack[0], then stack is empty.
     Value* stackTop;
+
+    // Table (hashmap) of "interned strings", to avoid strings duplication,
+    // and to make Tables work! (check string interning 20.5)
+    // This allows to do == on strings! because same string address => same
+    // string guarantee!
+    Table strings;
 
     // pointer to the head of the list of all the object dynamically allocated
     // on the heap, so the garbage collector can free them!

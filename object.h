@@ -30,6 +30,10 @@ struct ObjString {
     Obj obj;
     int length;
     char* chars;
+
+    // this is used for the hashtable, if a string is used as a key, we only
+    // hash it once & store it here
+    uint32_t hash;
 };
 
 
