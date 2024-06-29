@@ -363,7 +363,11 @@ static void addLocal(Token name) {
 
     Local* local = &current->locals[current->localCount++];
     local->name = name;
-    local->depth = current->scopeDepth;
+
+    // to avoid edge case: var a = 1; { var a = a; }
+    // we split declaration & init in 2
+    // depth = -1 indicates an uninitialized var
+    local->depth = -1;
 }
 
 static bool identifiersEqual(Token* a, Token* b) {
@@ -408,10 +412,17 @@ static void expression() {
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
+static void markInitialized() {
+    current->locals[current->localCount - 1].depth = current->scopeDepth;
+}
+
 static void defineVariable(uint8_t global) {
     // for local variable we have nothing to do, the value is already on the
     // stack
-    if (current->scopeDepth > 0) return;
+    if (current->scopeDepth > 0) {
+        markInitialized();
+        return;
+    }
 
     emitBytes(OP_DEFINE_GLOBAL, global);
 }
@@ -547,6 +558,9 @@ static int resolveLocal(Compiler* compiler, Token* name) {
     for (int i = compiler->localCount - 1; i >= 0; i--) {
         Local* local = &compiler->locals[i];
         if(identifiersEqual(name, &local->name)) {
+            if (local->depth == -1) {
+                error("Can't read local variable in its own initializer.");
+            }
             return i;
         }
     }
