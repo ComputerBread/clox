@@ -146,6 +146,18 @@ static void emitBytes(uint8_t b1, uint8_t b2) {
     emitByte(b2);
 }
 
+
+static int emitJump(uint8_t instruction) {
+    emitByte(instruction);
+    // setting a 16-bit offset jump placeholder (will be replaced later, once
+    // we know by how much we need to jump!)
+    emitByte(0xff);
+    emitByte(0xff);
+
+    // returns the offset of the emitted instruction in the chunk
+    return currentChunk()->count - 2;
+}
+
 static void emitReturn() {
     emitByte(OP_RETURN);
 }
@@ -172,6 +184,18 @@ static uint8_t makeConstant(Value value) {
  */
 static void emitConstant(Value value) {
     emitBytes(OP_CONSTANT, makeConstant(value));
+}
+
+static void patchJump(int offset) {
+    // -2 to adjust for the bytecode for the jump offset itself;
+    int jump = currentChunk()->count - offset - 2;
+
+    if (jump > UINT16_MAX) {
+        error("too much code to jump over.");
+    }
+
+    currentChunk()->code[offset] = (jump >> 8) & 0xff;
+    currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
 static void initCompiler(Compiler* compiler) {
@@ -412,6 +436,10 @@ static void expression() {
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
+// when a local var is declared, it doesn't necessarely have a initializer
+// so it's depth is set to -1. When it's init, we set the correct scopeDepth.
+// Splitting declaration & definition is useful to handle
+// cases like "var a = 1; { var a = a;} -> this is an error
 static void markInitialized() {
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
@@ -453,6 +481,21 @@ static void expressionStatement() {
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
     emitByte(OP_POP);
+}
+
+static void ifStatement() {
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    // compile the condition, and leave its value on top of the stack
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after 'if'.");
+
+    // OP_JUMP_IF_FALSE takes an operand to tell by how much we need to increase
+    // the instruction pointer (IP), when the condition is false
+    // but we don't know how much yet, so we set a placeholder offset
+    int thenJump = emitJump(OP_JUMP_IF_FALSE);
+    statement();
+
+    patchJump(thenJump);
 }
 
 static void printStatement() {
@@ -522,6 +565,8 @@ static void statement() {
         beginScope();
         block();
         endScope();
+    } else if (match(TOKEN_IF)) {
+        ifStatement();
     } else {
         expressionStatement();
     }
@@ -555,6 +600,7 @@ static void string(bool canAssign) {
 }
 
 static int resolveLocal(Compiler* compiler, Token* name) {
+    // start from last, to start from most nested scope!
     for (int i = compiler->localCount - 1; i >= 0; i--) {
         Local* local = &compiler->locals[i];
         if(identifiersEqual(name, &local->name)) {
