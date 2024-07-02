@@ -230,6 +230,8 @@ static void declaration();
 static void literal(bool canAssign);
 static void string(bool canAssign);
 static void variable(bool canAssign);
+static void and_(bool canAssign);
+static void or_(bool canAssign);
 
 // This syntax is called "designated initializers".
 // Each TOKEN_... will be replaced by its numeric value and represents an index
@@ -259,7 +261,7 @@ ParseRule rules[] = {
     [TOKEN_IDENTIFIER]    = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
-    [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_AND]           = {NULL,     and_,   PREC_AND},
     [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
@@ -267,7 +269,7 @@ ParseRule rules[] = {
     [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
     [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
-    [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_OR]            = {NULL,     or_,    PREC_OR},
     [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
     [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
@@ -453,6 +455,62 @@ static void defineVariable(uint8_t global) {
     }
 
     emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+/**
+ * To compile "left and right".
+ *
+ * left operand expression -> emit value on top of stack
+ *
+ * OP_JUMP_IF_FALSE (if value on top of stack is false, we skip to "continues")
+ * | OP_POP
+ * | right operand expression
+ * +-> continues
+ */
+static void and_(bool canAssign) {
+
+    // at this point, the left-hand side expression has been compiled
+    // at runtime, its value will be on top of the stack
+
+    // if that value is false, we can skip the right operand and leave the
+    // left-hand side value as the result of the entire expression.
+
+    int endJump = emitJump(OP_JUMP_IF_FALSE);
+
+    // otherwise, we discard the left-hand value and the res of the and expr
+    // is the res of evaluating the right operand
+    emitByte(OP_POP);
+    parsePrecedence(PREC_AND);
+
+    patchJump(endJump);
+
+
+}
+
+
+/**
+ * if the left-hand side is truthy, then we skip over the right operand.
+ * if the left-hand side is falsey, it jump over (to?) the next statement.
+ *
+ * Here we implement or_ with existing jump op code, but it would make more
+ * sense to add a new instruction (like OP_JUMP_IF_TRUE)
+ *
+ * left operand expression
+ * OP_JUMP_IF_FALSE
+ * | OP_JUMP
+ * + | -> OP_POP (OP_JUMP_IF_FALSE)
+ *   | right operand expression
+ *   +-> continues (OP_JUMP)
+ */
+static void or_(bool canAssign) {
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(elseJump);
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_OR);
+    patchJump(endJump);
 }
 
 static void varDeclaration() {
