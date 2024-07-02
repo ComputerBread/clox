@@ -242,6 +242,8 @@ static void string(bool canAssign);
 static void variable(bool canAssign);
 static void and_(bool canAssign);
 static void or_(bool canAssign);
+static void beginScope();
+static void endScope();
 
 // This syntax is called "designated initializers".
 // Each TOKEN_... will be replaced by its numeric value and represents an index
@@ -610,6 +612,74 @@ static void whileStatement() {
     emitByte(OP_POP);
 }
 
+/**
+ * for ( initializer; condition; increment clause) {
+ *
+ * }
+ */
+static void forStatement() {
+
+    // if a "for" statement declares a variable, that variable should be scoped
+    // to the loop body, so we wrap the whole statement in a scope
+    beginScope();
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+
+    // initializer
+    if (match(TOKEN_SEMICOLON)) {
+        // no initializer
+    } else if (match(TOKEN_VAR)) {
+        varDeclaration();
+    } else {
+        expressionStatement();
+    }
+
+    // condition
+    int loopStart = currentChunk()->count;
+
+    // if there's no condition
+    int exitJump = -1;
+    if (!match(TOKEN_SEMICOLON)) {
+        expression();
+        consume(TOKEN_SEMICOLON, "Expect ';' after loop condition");
+
+        // jump out of the loop if the condition is false
+        exitJump = emitJump(OP_JUMP_IF_FALSE);
+        emitByte(OP_POP);
+    }
+
+    // because our compiler is single pass
+    // and because the "increment clause" appears before the body but is
+    // executed after the body, we need to:
+    // jump over the increment, run the body, jump back to the increment, run it
+    // and then go to the next iteration.
+    if(!match(TOKEN_RIGHT_PAREN)) {
+        int bodyJump = emitJump(OP_JUMP); // jump to body
+
+        int incrementStart = currentChunk()->count;
+        expression();
+        emitByte(OP_POP);
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        emitLoop(loopStart); // takes us back right before the condition expr
+        loopStart = incrementStart;
+        patchJump(bodyJump);
+    }
+
+    statement();
+    emitLoop(loopStart);
+
+    // if there's a condition
+    if (exitJump != -1) {
+        patchJump(exitJump);
+        emitByte(OP_POP); // pop res of condition
+    }
+
+
+
+    endScope();
+}
+
 static void synchronize() {
     parser.panicMode = false;
 
@@ -667,6 +737,8 @@ static void block() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_FOR)) {
+        forStatement();
     } else if (match(TOKEN_LEFT_BRACE)){
         beginScope();
         block();
