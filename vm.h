@@ -2,18 +2,28 @@
 #define clox_vm_h
 
 #include "chunk.h"
+#include "object.h"
 #include "value.h"
 #include "table.h"
 #include <stdint.h>
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+
+// A  callframe represents a single ongoing function call
+typedef struct {
+    ObjFunction* function;
+    uint8_t* ip; // return address
+    Value* slots; // base pointer (I guess)
+} CallFrame;
 
 typedef struct {
-    Chunk* chunk; // chunk the VM is executing
-
-    // instruction pointer (pointer to the next instruction to execute)
-    // points directly to the instruction (faster than using the index)
-    uint8_t* ip; 
+    // function calls have their own stack
+    // each function call creates a new callframe.
+    // frames & framecount replace "chunk" and "ip"
+    CallFrame frames[FRAMES_MAX];
+    // number of ongoing function calls
+    int frameCount;
 
     // stack-based VM
     // the stack:
@@ -35,6 +45,7 @@ typedef struct {
     // on the heap, so the garbage collector can free them!
     // (each Obj has a pointer to the next element in the list)
     Obj* objects;
+
 } VM;
 
 typedef enum {

@@ -5,6 +5,7 @@
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+#include "object.h"
 #include "scanner.h"
 #include "value.h"
 
@@ -54,7 +55,17 @@ typedef struct {
     int depth;
 } Local;
 
+typedef enum {
+    TYPE_FUNCTION,
+    TYPE_SCRIPT,
+} FunctionType;
+
 typedef struct {
+    // before functions: compiler assumes all code is one chunk
+    // after functions: each function has its own chunk, top level has its chunk too
+    ObjFunction* function;
+    FunctionType type;
+
     // simple flat array of all locals that are in scope during compilation
     // they are ordered in the order that their declarations appear in the code.
     // Since our bytecode operand is a single byte, we can only store UINT8_MAX+1
@@ -134,7 +145,7 @@ static bool match(TokenType type) {
 Chunk* compilingChunk;
 
 static Chunk* currentChunk() {
-    return compilingChunk;
+    return &current->function->chunk;
 }
 
 static void emitByte(uint8_t byte) {
@@ -208,20 +219,35 @@ static void patchJump(int offset) {
     currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
-static void initCompiler(Compiler* compiler) {
+static void initCompiler(Compiler* compiler, FunctionType type) {
+    compiler->function = NULL; // garbage collection-related paranoia, probably useless!
+    compiler->type = type;
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
+
+    compiler->function = newFunction();
+
     current = compiler;
+
+    // from now on, the compiler implicitly claims stack slot zero for the VM's
+    // own internal use
+    Local* local = &current->locals[current->localCount++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.length = 0;
 }
 
-static void endCompiler() {
+static ObjFunction* endCompiler() {
     emitReturn();
+    ObjFunction* function = current->function;
 
 #ifdef DEBUG_PRINT_CODE
     if(!parser.hadError) {
-        disassembleChunk(currentChunk(), "code");
+        disassembleChunk(currentChunk(), function->name != NULL ? function->name->chars : "<script>");
     }
 #endif
+
+    return function;
 
 }
 
@@ -850,12 +876,10 @@ static void grouping(bool canAssign) {
 
 
 // ----------------------------------------------------------------------------
-bool compile(const char* source, Chunk* chunk) {
+ObjFunction* compile(const char* source) {
     initScanner(source);
     Compiler compiler;
-    initCompiler(&compiler);
-
-    compilingChunk = chunk;
+    initCompiler(&compiler, TYPE_SCRIPT);
 
     // init parser
     parser.hadError = false;
@@ -867,6 +891,6 @@ bool compile(const char* source, Chunk* chunk) {
         declaration();
     }
 
-    endCompiler();
-    return !parser.hadError;
+    ObjFunction* function = endCompiler();
+    return parser.hadError ? NULL : function;
 }
