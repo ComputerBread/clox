@@ -483,6 +483,9 @@ static void expressionStatement() {
     emitByte(OP_POP);
 }
 
+/**
+ * To better understand this, check diagram p. 411
+ */
 static void ifStatement() {
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
     // compile the condition, and leave its value on top of the stack
@@ -493,9 +496,25 @@ static void ifStatement() {
     // the instruction pointer (IP), when the condition is false
     // but we don't know how much yet, so we set a placeholder offset
     int thenJump = emitJump(OP_JUMP_IF_FALSE);
+
+    // to remove the result of the condition  (if (condition == true))
+    // if the condition is false, this OP_POP will be skipped
+    emitByte(OP_POP);
     statement();
 
+    // ----------------- else branch
+    // to jump over the else branch if the condition was true!
+    // this jump is unconditional, we always take it when we are inside the 
+    // "if then { here }" branch.
+    int elseJump = emitJump(OP_JUMP);
+
     patchJump(thenJump);
+    // to remove the result of the condition  (if (condition == false))
+    emitByte(OP_POP);
+
+    if (match(TOKEN_ELSE)) statement();
+
+    patchJump(elseJump);
 }
 
 static void printStatement() {
