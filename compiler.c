@@ -60,7 +60,12 @@ typedef enum {
     TYPE_SCRIPT,
 } FunctionType;
 
-typedef struct {
+typedef struct Compiler {
+    // useful for compiling nested functions
+    // each function has its own compiler, we keep track of the compilers by
+    // chaining them together
+    struct Compiler* enclosing;
+
     // before functions: compiler assumes all code is one chunk
     // after functions: each function has its own chunk, top level has its chunk too
     ObjFunction* function;
@@ -220,6 +225,7 @@ static void patchJump(int offset) {
 }
 
 static void initCompiler(Compiler* compiler, FunctionType type) {
+    compiler->enclosing = current;
     compiler->function = NULL; // garbage collection-related paranoia, probably useless!
     compiler->type = type;
     compiler->localCount = 0;
@@ -228,6 +234,10 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->function = newFunction();
 
     current = compiler;
+
+    if (type != TYPE_SCRIPT) {
+        current->function->name = copyString(parser.previous.start, parser.previous.length);
+    }
 
     // from now on, the compiler implicitly claims stack slot zero for the VM's
     // own internal use
@@ -247,6 +257,7 @@ static ObjFunction* endCompiler() {
     }
 #endif
 
+    current = current->enclosing;
     return function;
 
 }
@@ -481,6 +492,12 @@ static void expression() {
 // Splitting declaration & definition is useful to handle
 // cases like "var a = 1; { var a = a;} -> this is an error
 static void markInitialized() {
+
+    // a top level function declaration will also call this function
+    // when that happens, there's no local var to mark initialized, the function
+    // is bound to a global variable
+    if (current->scopeDepth == 0) return;
+
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
 
@@ -760,6 +777,45 @@ static void block() {
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
+static void function(FunctionType type) {
+    // to handle compiling mutliple functions nested within each other
+    // we create a new compiler per function
+    Compiler compiler;
+    initCompiler(&compiler, type);
+    beginScope(); 
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+    // parameters
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            current->function->arity++;
+            if (current->function->arity > 255) {
+                errorAtCurrent("Can't have more than 255 parameters.");
+            }
+
+            uint8_t paramConstant = parseVariable("Expect parameter name.");
+            defineVariable(paramConstant);
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block();
+
+    ObjFunction* function = endCompiler();
+    emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+}
+
+static void funDeclaration() {
+    uint8_t global = parseVariable("Expect function name.");
+    // mark "function variable" initialized, before we compile the body
+    // so we can call the function inside itself
+    markInitialized();
+    function(TYPE_FUNCTION);
+    defineVariable(global);
+}
+
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
@@ -779,7 +835,9 @@ static void statement() {
 }
 
 static void declaration() {
-    if (match(TOKEN_VAR)) {
+    if (match(TOKEN_FUN)) {
+        funDeclaration();
+    } else if (match(TOKEN_VAR)) {
         varDeclaration();
     } else {
         statement();
